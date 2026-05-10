@@ -5,8 +5,8 @@ on:
     branches:
       - main
       - development
-      - 'psi/**'
-      - 'Grerrow/**'
+      - psi
+      - Christos
   pull_request:
     branches:
       - main
