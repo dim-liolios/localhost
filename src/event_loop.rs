@@ -1,4 +1,4 @@
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD};
 // function, function, function, struct, constant, constant
@@ -28,13 +28,16 @@ pub fn run(listener: TcpListener) {
         return;
     }
 
-    // 4. create a buffer to hold events returned by epoll_wait
+    // 4. create a buffer to hold events (epoll_event structs) returned by epoll_wait
     let mut events = vec![epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
+
+    // 5. create a vector to hold client connections (TcpStream objects) that we will accept in the event loop
+    let mut clients: Vec<TcpStream> = Vec::new();
 
     println!("Event loop started");
 
-    // --------------------------------------------------------------------------------------------
     loop {
+        // 6. wait for events on the epoll instance (blocking call, n = number of events returned)
         let n = unsafe {
             epoll_wait(epoll_fd, events.as_mut_ptr(), MAX_EVENTS as i32, -1)
         };
@@ -46,16 +49,41 @@ pub fn run(listener: TcpListener) {
         for i in 0..n as usize {
             let fd = events[i].u64 as i32;
 
+            // 7. new client connecting
             if fd == listener_fd {
-                // 5. new client connecting
-                println!("New connection incoming");
+                match listener.accept() {
+                    Ok((client_stream, addr)) => {
+                        println!("New connection from {}", addr);
+                        client_stream.set_nonblocking(true).expect("Failed to set non-blocking");
+                        let client_fd = client_stream.as_raw_fd();
+
+                        // register client with epoll so we get notified when they send data
+                        let mut client_event = epoll_event {
+                            events: EPOLLIN as u32,
+                            u64: client_fd as u64,
+                        };
+                        let result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &mut client_event) };
+                        if result < 0 {
+                            eprintln!("Failed to add client to epoll");
+                        } else {
+                            clients.push(client_stream); // keep alive
+                        }
+                    }
+                    Err(e) => eprintln!("accept() failed: {}", e),
+                }
             } else {
-                // 6. existing client sent data
+                // 7. existing client sent data
                 println!("Data from client fd: {}", fd);
             }
         }
     }
 } 
+
+/* ====================================================================================================================
+// HELPER FUNCTIONS:
+
+
+
 
 /* ====================================================================================================================
 NOTES:
@@ -79,5 +107,19 @@ NOTES:
 - EPOLLIN: constant from libc that indicates we want to be notified when there is data to read on the file descriptor
     if used on the listener socket, this means a new connection is ready to accept()
     if used on client sockets, this means there is data to read from the client
+    EPOLLIN  = 0x00000001
+    EPOLLOUT = 0x00000004
+    they are bit flags, so you can combine them using bitwise OR (|) if you want to monitor multiple events on the same fd
+
+- events vetor:
+    epoll_event is a C struct from libc, so we need to initialize it with default values (events: 0, u64: 0)
+    if this wasn't the case we would use: vec![epoll_event::default(); MAX_EVENTS]
+
+-  events.as_mut_ptr():
+    we need a mutable pointer to the structs ("epoll_event") inside the "events" vector, not to the vector itself, because epoll_wait 
+    will write the events that occurred directly into the memory locations of those structs
+    (these structs have already their position in memory bc we created a vector with 64 empty structs)
+    what we need: *mut epoll_event (we get it from events.as_mut_ptr())
+    what we dont need: &mut events would give us a &mut Vec<epoll_event> (reference to the vector itself, not the structs inside it)
 
 */
