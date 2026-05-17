@@ -1,7 +1,8 @@
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
-use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD};
-// function, function, function, struct, constant, constant
+use std::io::Read;
+use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
+// function, function, function, struct, constant, constant, constant
 
 const MAX_EVENTS: usize = 64;
 
@@ -16,13 +17,14 @@ pub fn run(listener: TcpListener) {
     }
 
     // 2. create event struct describing which fd to watch and for what events
-    let mut event = epoll_event {
+    // we will use this struct for both the listener socket and client sockets
+    let mut listener_event = epoll_event {
         events: EPOLLIN as u32,
         u64: listener_fd as u64,
     };
 
     // 3. add the listener_fd to the epoll instance
-    let event_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &mut event) };
+    let event_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &mut listener_event) };
     if event_add_result < 0 {
         eprintln!("Failed to add listener_fd to epoll instance");
         return;
@@ -31,7 +33,7 @@ pub fn run(listener: TcpListener) {
     // 4. create a buffer to hold events (epoll_event structs) returned by epoll_wait
     let mut events = vec![epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
 
-    // 5. create a vector to hold client connections (TcpStream objects) that we will accept in the event loop
+    // 5. create a vector to hold client connections (TcpStream objects)
     let mut clients: Vec<TcpStream> = Vec::new();
 
     println!("Event loop started");
@@ -49,31 +51,53 @@ pub fn run(listener: TcpListener) {
         for i in 0..n as usize {
             let fd = events[i].u64 as i32;
 
-            // 7. new client connecting
+            // fd = listener_fd => new client connecting --------------------------------------------------------------
             if fd == listener_fd {
                 match listener.accept() {
-                    Ok((client_stream, addr)) => {
+                    Ok((client_socket, addr)) => {
                         println!("New connection from {}", addr);
-                        client_stream.set_nonblocking(true).expect("Failed to set non-blocking");
-                        let client_fd = client_stream.as_raw_fd();
+                        client_socket.set_nonblocking(true).expect("Failed to set non-blocking");
+                        let client_fd = client_socket.as_raw_fd();
 
-                        // register client with epoll so we get notified when they send data
                         let mut client_event = epoll_event {
                             events: EPOLLIN as u32,
                             u64: client_fd as u64,
                         };
-                        let result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &mut client_event) };
-                        if result < 0 {
+
+                        // add the client_fd to the epoll instance like in 3. above for listener_fd
+                        let client_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &mut client_event) };
+                        if client_add_result < 0 {
                             eprintln!("Failed to add client to epoll");
                         } else {
-                            clients.push(client_stream); // keep alive
+                            clients.push(client_socket); // important to keep the connection alive
                         }
                     }
                     Err(e) => eprintln!("accept() failed: {}", e),
                 }
             } else {
-                // 7. existing client sent data
-                println!("Data from client fd: {}", fd);
+                // fd = client_fd => existing client sent data --------------------------------------------------------
+                if let Some(client_socket) = clients.iter_mut().find(|c| c.as_raw_fd() == fd) {
+                // find() returns Option (Some(value) -> TcpStream or None)
+
+                    let mut buffer = [0u8; 4096]; // array with 4096 8-bit integers -> bytes (0s here) to hold the data read from the client
+                
+                    match client_socket.read(&mut buffer) {
+                    // read() returns Result (usize -> n bytes or Error)
+                        Ok(0) => {
+                            let client_remove_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, std::ptr::null_mut()) };
+                            if client_remove_result < 0 {
+                                eprintln!("Failed to remove client from epoll");
+                            }
+                            clients.retain(|c| c.as_raw_fd() != fd); // remove dead client from clients vector anyway
+                            println!("Client fd {} disconnected", fd);
+                        }
+                        Ok(bytes_read) => {
+                            let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+                            println!("Received request:\n{}", request);
+                        }
+                        Err(e) => eprintln!("read() failed: {}", e),
+                    }
+                }
             }
         }
     }
@@ -85,7 +109,7 @@ pub fn run(listener: TcpListener) {
 
 
 
-/* ====================================================================================================================
+=======================================================================================================================
 NOTES:
 
 - epoll_create1 tells Kernel to create an epoll instance and returns an integer that is its file descriptor
@@ -100,8 +124,8 @@ NOTES:
     we create an epoll_event struct to specify which listener socket we want to monitor (using its fd) and for what kind of events
     we set the events field to EPOLLIN (data available to read — on the listener socket this means a new connection is ready to accept())
 
-- epoll_ctl: adds, modifies, or removes file descriptors from the interest list of the epoll instance
-    here we call epoll_ctl to add the listener socket to the epoll
+- epoll_ctl: adds, modifies, or removes file descriptors from the kernel's interest list of the epoll instance
+    we call epoll_ctl to add the listener socket to the epoll and later to add client sockets as well
     same as with epoll_create1, if it returns a negative value, it indicates an error occurred while adding the fd to the epoll instance
 
 - EPOLLIN: constant from libc that indicates we want to be notified when there is data to read on the file descriptor
@@ -111,7 +135,7 @@ NOTES:
     EPOLLOUT = 0x00000004
     they are bit flags, so you can combine them using bitwise OR (|) if you want to monitor multiple events on the same fd
 
-- events vetor:
+- events vector:
     epoll_event is a C struct from libc, so we need to initialize it with default values (events: 0, u64: 0)
     if this wasn't the case we would use: vec![epoll_event::default(); MAX_EVENTS]
 
@@ -122,4 +146,18 @@ NOTES:
     what we need: *mut epoll_event (we get it from events.as_mut_ptr())
     what we dont need: &mut events would give us a &mut Vec<epoll_event> (reference to the vector itself, not the structs inside it)
 
+- clients vector:
+    we need to store the TcpStream objects for the clients in a vector outside the loop so that they are not dropped at the end of
+    each loop iteration due to how ownership works in Rust
+
+- epoll loop:
+    the first time we call epoll_wait we will get events only for the listener socket, (listener events = new client connection) bc its
+    the only fd registered with the epoll instance at that point
+    but after we accept a new client connection, we add its fd to the epoll instance, so that in the next iterations of the loop we will also
+    get events for that client (client events = data sent)
+    
+- listener.accept():
+    this TcpListener method returns a Result<(TcpStream, SocketAddr), std::io::Error>
+    if successful, it gives us a TcpStream for communicating with the client and the client's SocketAddr (IP and port)
+    if it fails, it gives us an error which we print to stderr
 */
