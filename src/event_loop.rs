@@ -33,13 +33,19 @@ pub fn run(listener: TcpListener) {
     // 4. create a buffer to hold events (epoll_event structs) returned by epoll_wait
     let mut events = vec![epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
 
-    // 5. create a vector to hold client connections (TcpStream objects)
-    let mut clients: Vec<TcpStream> = Vec::new();
+    // 5. create Client struct to hold clients (TcpStream) with a buffer (for inc data in chunks - larger than 4096 bytes)
+    struct Client {
+        socket: TcpStream,
+        buffer: Vec<u8>,
+    }
+    
+    // 6. create a vector to hold client connections (Client structs)
+    let mut clients: Vec<Client> = Vec::new();
 
     println!("Event loop started");
 
     loop {
-        // 6. wait for events on the epoll instance (blocking call, n = number of events returned)
+        // 7. wait for events on the epoll instance (blocking call, n = number of events returned)
         let n = unsafe {
             epoll_wait(epoll_fd, events.as_mut_ptr(), MAX_EVENTS as i32, -1)
         };
@@ -69,31 +75,39 @@ pub fn run(listener: TcpListener) {
                         if client_add_result < 0 {
                             eprintln!("Failed to add client to epoll");
                         } else {
-                            clients.push(client_socket); // important to keep the connection alive
+                            clients.push(Client { socket: client_socket, buffer: Vec::new() }); // important to keep the connection alive
                         }
                     }
                     Err(e) => eprintln!("accept() failed: {}", e),
                 }
             } else {
                 // fd = client_fd => existing client sent data --------------------------------------------------------
-                if let Some(client_socket) = clients.iter_mut().find(|c| c.as_raw_fd() == fd) {
+                if let Some(client) = clients.iter_mut().find(|c| c.socket.as_raw_fd() == fd) {
                 // find() returns Option (Some(value) -> TcpStream or None)
 
                     let mut buffer = [0u8; 4096]; // array with 4096 8-bit integers -> bytes (0s here) to hold the data read from the client
                 
-                    match client_socket.read(&mut buffer) {
+                    match client.socket.read(&mut buffer) {
                     // read() returns Result (usize -> n bytes or Error)
                         Ok(0) => {
                             let client_remove_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, std::ptr::null_mut()) };
                             if client_remove_result < 0 {
                                 eprintln!("Failed to remove client from epoll");
                             }
-                            clients.retain(|c| c.as_raw_fd() != fd); // remove dead client from clients vector anyway
+                            clients.retain(|c| c.socket.as_raw_fd() != fd); // remove dead client from clients vector anyway
                             println!("Client fd {} disconnected", fd);
                         }
                         Ok(bytes_read) => {
-                            let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-                            println!("Received request:\n{}", request);
+                            client.buffer.extend_from_slice(&buffer[..bytes_read]);
+                            // extend_from_slice() appends the bytes read from the client to the client's buffer
+
+                            while let Some(end) = request_end(&client.buffer) {
+                                let request = String::from_utf8_lossy(&client.buffer[..end]).to_string();
+                                // let request = String::from_utf8_lossy(&client.buffer);
+                                
+                                println!("Received request:\n{}", request);
+                                client.buffer.drain(..end); // remove only the processed request from the buffer
+                            }
                         }
                         Err(e) => eprintln!("read() failed: {}", e),
                     }
@@ -103,13 +117,54 @@ pub fn run(listener: TcpListener) {
     }
 } 
 
-/* ====================================================================================================================
+
+// ====================================================================================================================
 // HELPER FUNCTIONS:
 
+fn request_end(buffer: &[u8]) -> Option<usize> {
+    let headers_end = buffer.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
+    let headers = std::str::from_utf8(&buffer[..headers_end]).ok()?;
+
+    // chunked transfer encoding
+    if headers.lines().any(|l| {
+        let l = l.to_ascii_lowercase();
+        l.starts_with("transfer-encoding:") && l.contains("chunked")
+    }) {
+        let body = &buffer[headers_end..];
+        let end = body.windows(5).position(|w| w == b"0\r\n\r\n")?;
+        return Some(headers_end + end + 5);
+    }
+
+    // content-length
+    if let Some(len) = extract_content_length(headers) {
+        return if buffer.len() >= headers_end + len {
+            Some(headers_end + len)
+        } else {
+            None // body not fully received yet
+        };
+    }
+
+    // no body (GET, HEAD, DELETE, etc.)
+    let method = headers.lines().next()?.split_whitespace().next()?;
+    if matches!(method, "POST" | "PUT" | "PATCH") {
+        return None; // body expected but no Content-Length
+    }
+
+    Some(headers_end)
+}
+
+fn extract_content_length(headers: &str) -> Option<usize> {
+    headers.lines().find_map(|line| {
+        if line.to_ascii_lowercase().starts_with("content-length:") {
+            line.split(':').nth(1)?.trim().parse().ok()
+        } else {
+            None
+        }
+    })
+}
 
 
-
-=======================================================================================================================
+/* ====================================================================================================================
 NOTES:
 
 - epoll_create1 tells Kernel to create an epoll instance and returns an integer that is its file descriptor
@@ -160,4 +215,5 @@ NOTES:
     this TcpListener method returns a Result<(TcpStream, SocketAddr), std::io::Error>
     if successful, it gives us a TcpStream for communicating with the client and the client's SocketAddr (IP and port)
     if it fails, it gives us an error which we print to stderr
+    
 */
