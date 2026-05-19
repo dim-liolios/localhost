@@ -101,12 +101,11 @@ pub fn run(listener: TcpListener) {
                             client.buffer.extend_from_slice(&buffer[..bytes_read]);
                             // extend_from_slice() appends the bytes read from the client to the client's buffer
 
-                            while let Some(end) = request_end(&client.buffer) {
+                            while let Some(end) = check_request_end(&client.buffer) {
                                 let request = String::from_utf8_lossy(&client.buffer[..end]).to_string();
-                                // let request = String::from_utf8_lossy(&client.buffer);
                                 
                                 println!("Received request:\n{}", request);
-                                client.buffer.drain(..end); // remove only the processed request from the buffer
+                                client.buffer.drain(..end);
                             }
                         }
                         Err(e) => eprintln!("read() failed: {}", e),
@@ -121,11 +120,11 @@ pub fn run(listener: TcpListener) {
 // ====================================================================================================================
 // HELPER FUNCTIONS:
 
-fn request_end(buffer: &[u8]) -> Option<usize> {
+fn check_request_end(buffer: &[u8]) -> Option<usize> {
     let headers_end = buffer.windows(4).position(|w| w == b"\r\n\r\n")? + 4;
     let headers = std::str::from_utf8(&buffer[..headers_end]).ok()?;
 
-    // chunked transfer encoding
+    // case 1: chunked transfer encoding
     if headers.lines().any(|l| {
         let l = l.to_ascii_lowercase();
         l.starts_with("transfer-encoding:") && l.contains("chunked")
@@ -135,7 +134,7 @@ fn request_end(buffer: &[u8]) -> Option<usize> {
         return Some(headers_end + end + 5);
     }
 
-    // content-length
+    // case 2: POST with content-length
     if let Some(len) = extract_content_length(headers) {
         return if buffer.len() >= headers_end + len {
             Some(headers_end + len)
@@ -144,10 +143,10 @@ fn request_end(buffer: &[u8]) -> Option<usize> {
         };
     }
 
-    // no body (GET, HEAD, DELETE, etc.)
+    // case 3: no body (GET, HEAD, DELETE, etc.)
     let method = headers.lines().next()?.split_whitespace().next()?;
     if matches!(method, "POST" | "PUT" | "PATCH") {
-        return None; // body expected but no Content-Length
+        return None;
     }
 
     Some(headers_end)
@@ -163,6 +162,37 @@ fn extract_content_length(headers: &str) -> Option<usize> {
     })
 }
 
+// ====================================================================================================================
+// TESTS:
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_request_end_chunked() {
+        let req = b"POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n12\r\nhello from chunked\r\n0\r\n\r\n";
+        assert_eq!(check_request_end(req), Some(req.len()));
+    }
+
+    #[test]
+    fn test_request_end_content_length() {
+        let req = b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\nhello";
+        assert_eq!(check_request_end(req), Some(req.len()));
+    }
+
+    #[test]
+    fn test_request_end_get() {
+        let req = b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        assert_eq!(check_request_end(req), Some(req.len()));
+    }
+
+    #[test]
+    fn test_request_end_incomplete_body() {
+        let req = b"POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\nhello";
+        assert_eq!(check_request_end(req), None);
+    }
+}
 
 /* ====================================================================================================================
 NOTES:
@@ -215,5 +245,14 @@ NOTES:
     this TcpListener method returns a Result<(TcpStream, SocketAddr), std::io::Error>
     if successful, it gives us a TcpStream for communicating with the client and the client's SocketAddr (IP and port)
     if it fails, it gives us an error which we print to stderr
+
+- client.socket.read(&mut buffer):
+    reads up to 4096 bytes at a time from the kernel's TCP receive buffer; any remaining data stays in the kernel buffer
+    this fd will be reported as readable again on the next epoll_wait call until all data has been consumed
     
+- client.buffer.drain(..end):
+    drain() removes only a complete request (even if it is its last part), leaving any remainging data from the next request
+    in the buffer for the next loop iteration (thats why client.buffer.clear() would be wrong,
+    because it would remove all data from the buffer, including any incomplete request that we haven't processed yet)
+
 */
