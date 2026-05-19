@@ -9,3 +9,4 @@ main.rs
 server.rs
 event_loop.rs
 src/http/testing.rs
+.github/
