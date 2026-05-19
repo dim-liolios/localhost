@@ -2,8 +2,11 @@
 notes.md
 src/http/register_routes.rs
 router.conf
+
 //ignore routes directory
-routes/
+routes/uploads
+routes/www/error.html
+
 tests/
 main.rs
 server.rs
