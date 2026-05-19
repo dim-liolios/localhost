@@ -1,0 +1,67 @@
+[33mcommit 2c9d391d0dc0123c89fa54955e1b81f75f80d272[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mChristos[m[33m)[m
+Author: cm <75954152+Grerrow@users.noreply.github.com>
+Date:   Wed May 20 00:04:46 2026 +0300
+
+    Remove tracked files from git
+
+[33mcommit 0df7588381b6101726c57dc31ab3d9df0725c025[m[33m ([m[1;31morigin/Christos[m[33m)[m
+Merge: 1191646 7fa81c4
+Author: cm <75954152+Grerrow@users.noreply.github.com>
+Date:   Mon May 18 00:40:12 2026 +0300
+
+    server run corr
+
+[33mcommit 11916464b12170a92288cc63995e2c814c838ee9[m
+Author: cm <75954152+Grerrow@users.noreply.github.com>
+Date:   Mon May 18 00:34:53 2026 +0300
+
+    Connecting request.rs with epoll+response
+
+[33mcommit 7fa81c4031686249687e9d0e24880a05127926f2[m[33m ([m[1;31morigin/psi[m[33m, [m[1;32mpsi[m[33m)[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Mon May 18 00:01:47 2026 +0300
+
+    epoll - run() done
+
+[33mcommit c946e6a7f90658538e5b182e59f90cd5a68ad7b3[m
+Merge: cc1b89b 43cb450
+Author: cm <75954152+Grerrow@users.noreply.github.com>
+Date:   Sun May 17 23:25:00 2026 +0300
+
+    Merge remote-tracking branch 'origin/psi' into Christos
+
+[33mcommit 43cb450363402a9e7fa734f80d85bcb3d6abfe14[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Thu May 14 10:42:02 2026 +0300
+
+    working on new client connecting in epoll
+
+[33mcommit b4b9a4fc32bb165ebfe0875a7c0ba757096712e0[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Mon May 11 01:25:09 2026 +0300
+
+    working on epoll
+
+[33mcommit cc1b89bdfaf2c82db16ce5c2004c01066420dd20[m
+Author: cm <75954152+Grerrow@users.noreply.github.com>
+Date:   Mon May 11 00:18:39 2026 +0300
+
+    Added request.rs for request parsing
+
+[33mcommit 12d256c5b880b1d629e9f067f968e3d516717ef5[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Sat May 9 18:26:07 2026 +0300
+
+    fix: ci triggers for psi and Christos branches
+
+[33mcommit 03355d5ed130826b8eae273ba89d36b65cb25b77[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Sat May 9 18:06:54 2026 +0300
+
+    step 1 + git actions impl push-tests
+
+[33mcommit 5a58b6bd39a987f77e1292d22514981abdad0a07[m[33m ([m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmaster[m[33m, [m[1;32mdevelopment[m[33m)[m
+Author: dliolios <liolios.dimitris@gmail.com>
+Date:   Thu May 7 22:18:26 2026 +0300
+
+    start
