@@ -15,7 +15,7 @@ impl HttpRequest {
             status_code: 200,
             headers: self.headers.clone(),
             body,
-        }.into_bytes()
+        }.to_bytes()
 
    
     }

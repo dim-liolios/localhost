@@ -28,7 +28,7 @@ impl HttpResponseError {
 
 
 impl HttpResponseOk {
-      pub fn into_bytes(self) -> Vec<u8> {
+      pub fn to_bytes(self) -> Vec<u8> {
         let mut response = format!(
             "HTTP/1.1 {} OK\r\n",
             self.status_code
