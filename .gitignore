@@ -1,2 +1,11 @@
 /target
 notes.md
+src/http/register_routes.rs
+router.conf
+
+//ignore routes directory
+routes/uploads
+routes/www/error.html
+
+src/http/testing.rs
+.github/
