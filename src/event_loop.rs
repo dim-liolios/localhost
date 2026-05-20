@@ -1,7 +1,8 @@
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
-use std::io::Read;
+use std::io::{Read, Write};
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
+use crate::http::request::HttpRequest;
 // function, function, function, struct, constant, constant, constant
 
 const MAX_EVENTS: usize = 64;
@@ -102,8 +103,12 @@ pub fn run(listener: TcpListener) {
                             // extend_from_slice() appends the bytes read from the client to the client's buffer
 
                             while let Some(end) = check_request_end(&client.buffer) {
+                                let response = HttpRequest::parse_request(&client.buffer[..end]);
+                                if let Err(e) = client.socket.write_all(&response) {
+                                    eprintln!("Failed to send response to client: {}", e);
+                                    break;
+                                }
                                 let request = String::from_utf8_lossy(&client.buffer[..end]).to_string();
-                                
                                 println!("Received request:\n{}", request);
                                 client.buffer.drain(..end);
                             }

@@ -1,5 +1,6 @@
 mod server;
 mod event_loop;
+mod http;
 
 fn main() {
     // start the server
