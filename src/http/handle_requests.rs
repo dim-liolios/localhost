@@ -1,5 +1,5 @@
 use crate::http::request::HttpRequest;
-use crate::http::response::{ self, HttpResponseError, HttpResponseOk };
+use crate::http::response::{ HttpResponseError, HttpResponseOk };
 
 
 impl HttpRequest {
@@ -16,17 +16,10 @@ impl HttpRequest {
             headers: self.headers.clone(),
             body,
         }.to_bytes()
-
-   
     }
-
-    
-
-
 
     // //TODO   
     // fn handle_post(&self) -> HttpResponse {
-        
     // }
     // fn handle_delete(&self) -> HttpResponse {
     // }

@@ -99,9 +99,10 @@ impl HttpRequest {
         }
 
         //check cookies for authentication - reminder to check requirements
-        if self.headers.get("Cookie").is_none() {
-            return HttpResponseError::new_err_response(401, "Unauthorized");
-        }
+        //Cookie check disabled for now
+        // if self.headers.get("Cookie").is_none() {
+        //     return HttpResponseError::new_err_response(401, "Unauthorized");
+        // }
 
         //maybe add more checks here
 
@@ -117,22 +118,5 @@ impl HttpRequest {
             _ => HttpResponseError::new_err_response(405, "Method Not Allowed"),
         }
     }
-
-
-
-    //test for the 200 - response func for 200 not implemented yet
-    // fn test_200_response(&self) -> HttpResponse {
-    //     let headers = HashMap::from([
-    //         ("Content-Type".to_string(), "text/html".to_string()),
-    //     ]);
-    //     println!("Request is valid, returning 200 OK");
-    //     return HttpResponse {
-    //         status_code: 200,
-    //         headers,
-    //         body: b"<html><body><h1>Test 200 OK</h1></body></html>".to_vec(),
-    //     };
-    // }
-    
-
 }
 
