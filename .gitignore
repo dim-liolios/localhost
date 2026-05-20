@@ -7,9 +7,4 @@ router.conf
 routes/uploads
 routes/www/error.html
 
-tests/
-main.rs
-server.rs
-event_loop.rs
 src/http/testing.rs
-.github/
