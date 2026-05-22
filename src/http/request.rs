@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use crate::http::response::HttpResponseError;
 
 pub struct HttpRequest {
-    method: String,
+    pub method: String,
     pub path: String,
     version: String,
     pub headers: HashMap<String, String>,
-    body: Vec<u8>,
+    pub body: Vec<u8>,
 }
 
 
@@ -113,10 +113,11 @@ impl HttpRequest {
     fn handle_request(&self) -> Vec<u8> {
         match self.method.as_str() {
             "GET" => self.handle_get(),
-            //"POST" => self.handle_post(),
+            "POST" => self.handle_post(),
             //"DELETE" => self.handle_delete(),
             _ => HttpResponseError::new_err_response(405, "Method Not Allowed"),
         }
     }
 }
+
 

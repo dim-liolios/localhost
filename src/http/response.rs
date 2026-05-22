@@ -9,7 +9,7 @@ pub struct HttpResponseOk {
 
 pub struct HttpResponseError {
     pub status_code: u16,
-    pub message: String,
+    pub body: Vec<u8>,
 }
 
 impl HttpResponseError {
@@ -28,10 +28,15 @@ impl HttpResponseError {
 
 
 impl HttpResponseOk {
-      pub fn to_bytes(self) -> Vec<u8> {
+      pub fn response_ok_to_bytes(self) -> Vec<u8> {
         let mut response = format!(
-            "HTTP/1.1 {} OK\r\n",
-            self.status_code
+            "HTTP/1.1 {} {}\r\n",
+            self.status_code,
+            match self.status_code {
+                200 => "OK",
+                201 => "Created",
+                _ => "Unknown",
+            }
         );
         for (key, value) in self.headers {
             response.push_str(&format!("{}: {}\r\n", key, value));
