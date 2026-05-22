@@ -2,8 +2,7 @@
 #[test]
 fn test_tcp_listener_binds() {
     use std::net::TcpListener;
-    let listener = TcpListener::bind("127.0.0.1:8081");
-    assert!(listener.is_ok(), "Failed to bind to port 8081");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind");
 }
 
 // epoll event loop initiates
@@ -39,7 +38,6 @@ fn test_epoll_ctl_add_and_del() {
 
     unsafe { libc::close(epoll_fd) };
 }
-
 
 #[test]
 // #[ignore = "requires server running on localhost:8080"]

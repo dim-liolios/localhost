@@ -1,14 +1,18 @@
+use std::collections::HashSet;
 use std::net::{TcpListener, TcpStream};
+use std::time::{Duration, Instant};
 use std::os::unix::io::AsRawFd;
 use std::io::{Read, Write};
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
-use crate::http::request::HttpRequest;
 // function, function, function, struct, constant, constant, constant
+use crate::http::request::HttpRequest;
 
 const MAX_EVENTS: usize = 64;
+const TIMEOUT_SECS: u64 = 30;
+const EPOLL_TIMEOUT_MS: i32 = 5000;
 
-pub fn run(listener: TcpListener) {
-    let listener_fd = listener.as_raw_fd();
+pub fn run(listeners: Vec<TcpListener>) {
+    let listener_fds: HashSet<i32> = listeners.iter().map(|listener| listener.as_raw_fd()).collect();
 
     // 1. create epoll instance and get its file descriptor
     let epoll_fd = unsafe { epoll_create1(0) };
@@ -17,38 +21,44 @@ pub fn run(listener: TcpListener) {
         return;
     }
 
-    // 2. create event struct describing which fd to watch and for what events
-    // we will use this struct for both the listener socket and client sockets
-    let mut listener_event = epoll_event {
-        events: EPOLLIN as u32,
-        u64: listener_fd as u64,
-    };
+    // 2. add all listener_fds to the epoll instance
+    for listener in &listeners {
+        let listener_fd = listener.as_raw_fd();
+        
+        let mut listener_event = epoll_event {
+            events: EPOLLIN as u32,
+            u64: listener_fd as u64,
+        };
 
-    // 3. add the listener_fd to the epoll instance
-    let event_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &mut listener_event) };
-    if event_add_result < 0 {
-        eprintln!("Failed to add listener_fd to epoll instance");
-        return;
+        let event_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &mut listener_event) };
+        if event_add_result < 0 {
+            eprintln!("Failed to add listener_fd to epoll instance");
+            return;
+        }
     }
 
-    // 4. create a buffer to hold events (epoll_event structs) returned by epoll_wait
+    // 3. create a buffer to hold events (epoll_event structs) returned by epoll_wait
     let mut events = vec![epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
 
-    // 5. create Client struct to hold clients (TcpStream) with a buffer (for inc data in chunks - larger than 4096 bytes)
+    // 4. create Client struct to hold clients (TcpStream) with a buffer (for inc data in chunks - larger than 4096 bytes)
     struct Client {
         socket: TcpStream,
         buffer: Vec<u8>,
+        last_activity: Instant,
     }
     
-    // 6. create a vector to hold client connections (Client structs)
+    // 5. create a vector to hold client connections (Client structs)
     let mut clients: Vec<Client> = Vec::new();
 
-    println!("Event loop started");
+    println!("\nEvent loop started");
+    for fd in &listener_fds {
+        println!("Listening on fd {}", fd);
+    }
 
     loop {
-        // 7. wait for events on the epoll instance (blocking call, n = number of events returned)
+        // 6. wait for events on the epoll instance (blocking call, n = number of events returned)
         let n = unsafe {
-            epoll_wait(epoll_fd, events.as_mut_ptr(), MAX_EVENTS as i32, -1)
+            epoll_wait(epoll_fd, events.as_mut_ptr(), MAX_EVENTS as i32, EPOLL_TIMEOUT_MS)
         };
         if n < 0 {
             eprintln!("epoll_wait failed");
@@ -59,24 +69,27 @@ pub fn run(listener: TcpListener) {
             let fd = events[i].u64 as i32;
 
             // fd = listener_fd => new client connecting --------------------------------------------------------------
-            if fd == listener_fd {
-                match listener.accept() {
+            if listener_fds.contains(&fd) {
+                match listeners.iter().find(|listener| listener.as_raw_fd() == fd).unwrap().accept() {
+                    // we iterate over the listeners to find the one that matches the fd of the event and then call accept() on
+                    // it to get the new client connection
                     Ok((client_socket, addr)) => {
-                        println!("New connection from {}", addr);
                         client_socket.set_nonblocking(true).expect("Failed to set non-blocking");
                         let client_fd = client_socket.as_raw_fd();
+                        println!("\nNew connection from {}", addr);
+                        println!("Client fd {} assigned\n", client_fd);
 
                         let mut client_event = epoll_event {
                             events: EPOLLIN as u32,
                             u64: client_fd as u64,
                         };
 
-                        // add the client_fd to the epoll instance like in 3. above for listener_fd
+                        // add the client_fd to the epoll instance like in 2. above for listener_fd
                         let client_add_result = unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &mut client_event) };
                         if client_add_result < 0 {
                             eprintln!("Failed to add client to epoll");
                         } else {
-                            clients.push(Client { socket: client_socket, buffer: Vec::new() }); // important to keep the connection alive
+                            clients.push(Client { socket: client_socket, buffer: Vec::new(), last_activity: Instant::now() }); // important to keep the connection alive
                         }
                     }
                     Err(e) => eprintln!("accept() failed: {}", e),
@@ -99,6 +112,7 @@ pub fn run(listener: TcpListener) {
                             println!("Client fd {} disconnected", fd);
                         }
                         Ok(bytes_read) => {
+                            client.last_activity = Instant::now();
                             client.buffer.extend_from_slice(&buffer[..bytes_read]);
                             // extend_from_slice() appends the bytes read from the client to the client's buffer
 
@@ -109,8 +123,9 @@ pub fn run(listener: TcpListener) {
                                     break;
                                 }
                                 let request = String::from_utf8_lossy(&client.buffer[..end]).to_string();
-                                println!("Received request:\n{}", request);
                                 client.buffer.drain(..end);
+                                println!("Request from client fd {}", fd);
+                                // println!("Request:\n{}", request);
                             }
                         }
                         Err(e) => eprintln!("read() failed: {}", e),
@@ -118,6 +133,22 @@ pub fn run(listener: TcpListener) {
                 }
             }
         }
+
+        // 7. check for timed-out clients
+        let timeout = Duration::from_secs(TIMEOUT_SECS);
+        let timed_out_fds: Vec<i32> = clients.iter()
+            .filter(|c| c.last_activity.elapsed() > timeout)
+            .map(|c| c.socket.as_raw_fd())
+            .collect();
+
+        for timed_fd in &timed_out_fds {
+            if let Some(client) = clients.iter_mut().find(|c| c.socket.as_raw_fd() == *timed_fd) {
+                let _ = client.socket.write_all(b"HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            }
+            unsafe { epoll_ctl(epoll_fd, EPOLL_CTL_DEL, *timed_fd, std::ptr::null_mut()); }
+            println!("Client fd {} timed out (408)", timed_fd);
+        }
+        clients.retain(|c| !timed_out_fds.contains(&c.socket.as_raw_fd()));
     }
 } 
 
@@ -167,6 +198,7 @@ fn extract_content_length(headers: &str) -> Option<usize> {
     })
 }
 
+
 // ====================================================================================================================
 // TESTS:
 
@@ -198,6 +230,7 @@ mod tests {
         assert_eq!(check_request_end(req), None);
     }
 }
+
 
 /* ====================================================================================================================
 NOTES:

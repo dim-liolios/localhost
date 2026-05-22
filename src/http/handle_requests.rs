@@ -16,11 +16,15 @@ impl HttpRequest {
         if self.path != "/" {
             return HttpResponseError::new_err_response(404, "Not Found");
         }
+
         let body = std::fs::read("./routes/www/index.html").unwrap_or_else(|_| HttpResponseError::new_err_response(500, "Internal Server Error"));
+        
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("Content-Type".to_string(), "text/html".to_string());
 
         HttpResponseOk {
             status_code: 200,
-            headers: std::collections::HashMap::new(),
+            headers,
             body,
         }.response_ok_to_bytes()
     }
