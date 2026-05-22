@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 libc = "0.2"
+multer = "3"
+bytes = "1"
+futures-util = "0.3"
+futures = "0.3"
