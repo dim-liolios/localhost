@@ -9,24 +9,18 @@ use futures::executor::block_on;
 
 //Implementation for get - serve static files requests
 impl HttpRequest {
-    //simple implementation of get for testing
-    //serving static index.html at path "/"
-    //later we'll search register routes from config file
     pub fn handle_get(&self) -> Vec<u8> {
         if self.path != "/" {
             return HttpResponseError::new_err_response(404, "Not Found");
         }
-
-        let body = std::fs::read("./routes/www/index.html").unwrap_or_else(|_| HttpResponseError::new_err_response(500, "Internal Server Error"));
-        
-        let mut headers = std::collections::HashMap::new();
-        headers.insert("Content-Type".to_string(), "text/html".to_string());
-
-        HttpResponseOk {
-            status_code: 200,
-            headers,
-            body,
-        }.response_ok_to_bytes()
+        match std::fs::read("./www/index.html") {
+            Ok(body) => {
+                let mut headers = std::collections::HashMap::new();
+                headers.insert("Content-Type".to_string(), "text/html".to_string());
+                HttpResponseOk { status_code: 200, headers, body }.response_ok_to_bytes()
+            }
+            Err(_) => HttpResponseError::new_err_response(500, "Internal Server Error"),
+        }
     }
 }
 
@@ -82,7 +76,7 @@ impl HttpRequest {
                             };
                             saved_file_name = safe_name.to_string_lossy().into_owned();
 
-                            let save_path = Path::new("./routes/uploads").join(&saved_file_name);
+                            let save_path = Path::new("./www/uploads").join(&saved_file_name);
 
                             let mut file = match File::create(save_path) {
                                 Ok(f) => f,
