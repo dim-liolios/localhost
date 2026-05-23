@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
 // function, function, function, struct, constant, constant, constant
 use crate::http::request::HttpRequest;
+use crate::client::Client;
 
 const MAX_EVENTS: usize = 64;
 const TIMEOUT_SECS: u64 = 30;
@@ -39,15 +40,8 @@ pub fn run(listeners: Vec<TcpListener>) {
 
     // 3. create a buffer to hold events (epoll_event structs) returned by epoll_wait
     let mut events = vec![epoll_event { events: 0, u64: 0 }; MAX_EVENTS];
-
-    // 4. create Client struct to hold clients (TcpStream) with a buffer (for inc data in chunks - larger than 4096 bytes)
-    struct Client {
-        socket: TcpStream,
-        buffer: Vec<u8>,
-        last_activity: Instant,
-    }
     
-    // 5. create a vector to hold client connections (Client structs)
+    // 4. create a vector to hold client connections (Client structs)
     let mut clients: Vec<Client> = Vec::new();
 
     println!("\nEvent loop started");
@@ -56,7 +50,7 @@ pub fn run(listeners: Vec<TcpListener>) {
     }
 
     loop {
-        // 6. wait for events on the epoll instance (blocking call, n = number of events returned)
+        // 5. wait for events on the epoll instance (blocking call, n = number of events returned)
         let n = unsafe {
             epoll_wait(epoll_fd, events.as_mut_ptr(), MAX_EVENTS as i32, EPOLL_TIMEOUT_MS)
         };
@@ -89,7 +83,7 @@ pub fn run(listeners: Vec<TcpListener>) {
                         if client_add_result < 0 {
                             eprintln!("Failed to add client to epoll");
                         } else {
-                            clients.push(Client { socket: client_socket, buffer: Vec::new(), last_activity: Instant::now() }); // important to keep the connection alive
+                            clients.push(Client::new(client_socket)); // important to keep the connection alive
                         }
                     }
                     Err(e) => eprintln!("accept() failed: {}", e),
@@ -134,7 +128,7 @@ pub fn run(listeners: Vec<TcpListener>) {
             }
         }
 
-        // 7. check for timed-out clients
+        // 6. check for timed-out clients
         let timeout = Duration::from_secs(TIMEOUT_SECS);
         let timed_out_fds: Vec<i32> = clients.iter()
             .filter(|c| c.last_activity.elapsed() > timeout)
