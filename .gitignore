@@ -4,10 +4,8 @@ src/http/register_routes.rs
 src/http/testing.rs
 
 //ignore routes
-routes/uploads
-routes/www/error.html
-routes/www/uploads.html
-router.conf
+www/uploads/*
+www/uploads.html
 
 notes.md
 test_upload.txt

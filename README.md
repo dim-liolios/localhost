@@ -19,6 +19,7 @@ Incoming connections are managed through an `epoll` event loop. The server regis
 - **Request validation** — method whitelist, path traversal protection, version check, body size limit
 - **GET handler** — serves static files from a configured root directory
 - **POST handler** — accepts `multipart/form-data` file uploads and saves them to disk
+- **Error Response Template** — loaded once at startup from `routes/www/error.html` into a global `OnceLock` and reused for all error responses
 - **HTTP response serialization** — correctly formatted status line, headers, and body for both success and error responses
 
 ## Stack

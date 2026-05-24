@@ -64,6 +64,7 @@ impl HttpRequest {
         let mut saved_file_name = String::new();
 
         // 3. Execute the async state machine blockingly on the current epoll thread
+        let mut guarantee_file_saved = false;
         block_on(async {
             loop {
                 match multipart.next_field().await {
@@ -95,6 +96,7 @@ impl HttpRequest {
                                 }
                             }
                             let _ = file.flush();
+                            guarantee_file_saved = true;
                         }
                     }
                     Ok(None) => break,
@@ -104,7 +106,7 @@ impl HttpRequest {
         });
 
         // 4. Return custom response body bytes signaling success
-        if !saved_file_name.is_empty() {
+        if guarantee_file_saved == true {
             let response_body = format!("File '{}' uploaded successfully!", saved_file_name);
             HttpResponseOk {
                 status_code: 201,
