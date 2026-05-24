@@ -79,6 +79,9 @@ impl HttpRequest {
 
                             let save_path = Path::new("./www/uploads").join(&saved_file_name);
 
+                            if std::fs::create_dir_all("./www/uploads").is_err() {
+                                return;
+                            }
                             let mut file = match File::create(save_path) {
                                 Ok(f) => f,
                                 Err(_) => return,

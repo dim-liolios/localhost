@@ -2,8 +2,8 @@
 #[test]
 fn test_tcp_listener_binds() {
     use std::net::TcpListener;
-    let listener = TcpListener::bind("127.0.0.1:8081");
-    assert!(listener.is_ok(), "Failed to bind to port 8081");
+    let listener = TcpListener::bind("127.0.0.1:0");
+    assert!(listener.is_ok(), "Failed to bind to a port");
 }
 
 // epoll event loop initiates

@@ -4,7 +4,6 @@ src/http/register_routes.rs
 src/http/testing.rs
 
 //ignore routes
-www/uploads/*
 www/uploads.html
 
 notes.md
