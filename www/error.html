@@ -1,0 +1,42 @@
+<!-- //simple error html with dynamic status code and message -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error {{status_code}}</title>
+</head>
+<body>
+    <h1>Error {{status_code}}</h1>
+    <p>{{status_text}}</p> 
+</body>
+</html>
+
+
+<!-- TODO: -->
+<!-- //main.rs
+use std::sync::OnceLock;
+
+pub static ERROR_TEMPLATE: OnceLock<String> = OnceLock::new();
+
+fn main() {
+    ERROR_TEMPLATE
+        .set(std::fs::read_to_string("routes/www/error.html").unwrap())
+        .unwrap();
+
+    let listener = server::create_listener("127.0.0.1:8080");
+    event_loop::run(listener);
+}
+
+
+response.rs
+use crate::ERROR_TEMPLATE;
+
+fn new_err_response(status_code: u16, status_text: &str) -> Self {
+    let body = ERROR_TEMPLATE
+        .get()
+        .unwrap()
+        .replace("{{status_code}}", &status_code.to_string())
+        .replace("{{status_text}}", status_text);
+    // ...
+} -->

@@ -9,20 +9,18 @@ use futures::executor::block_on;
 
 //Implementation for get - serve static files requests
 impl HttpRequest {
-    //simple implementation of get for testing
-    //serving static index.html at path "/"
-    //later we'll search register routes from config file
     pub fn handle_get(&self) -> Vec<u8> {
         if self.path != "/" {
             return HttpResponseError::new_err_response(404, "Not Found");
         }
-        let body = std::fs::read("./routes/www/index.html").unwrap_or_else(|_| HttpResponseError::new_err_response(500, "Internal Server Error"));
-
-        HttpResponseOk {
-            status_code: 200,
-            headers: std::collections::HashMap::new(),
-            body,
-        }.response_ok_to_bytes()
+        match std::fs::read("./www/index.html") {
+            Ok(body) => {
+                let mut headers = std::collections::HashMap::new();
+                headers.insert("Content-Type".to_string(), "text/html".to_string());
+                HttpResponseOk { status_code: 200, headers, body }.response_ok_to_bytes()
+            }
+            Err(_) => HttpResponseError::new_err_response(500, "Internal Server Error"),
+        }
     }
 }
 
@@ -66,6 +64,7 @@ impl HttpRequest {
         let mut saved_file_name = String::new();
 
         // 3. Execute the async state machine blockingly on the current epoll thread
+        let mut guarantee_file_saved = false;
         block_on(async {
             loop {
                 match multipart.next_field().await {
@@ -78,7 +77,7 @@ impl HttpRequest {
                             };
                             saved_file_name = safe_name.to_string_lossy().into_owned();
 
-                            let save_path = Path::new("./routes/uploads").join(&saved_file_name);
+                            let save_path = Path::new("./www/uploads").join(&saved_file_name);
 
                             let mut file = match File::create(save_path) {
                                 Ok(f) => f,
@@ -97,6 +96,7 @@ impl HttpRequest {
                                 }
                             }
                             let _ = file.flush();
+                            guarantee_file_saved = true;
                         }
                     }
                     Ok(None) => break,
@@ -106,7 +106,7 @@ impl HttpRequest {
         });
 
         // 4. Return custom response body bytes signaling success
-        if !saved_file_name.is_empty() {
+        if guarantee_file_saved == true {
             let response_body = format!("File '{}' uploaded successfully!", saved_file_name);
             HttpResponseOk {
                 status_code: 201,
