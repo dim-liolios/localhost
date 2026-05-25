@@ -1,4 +1,13 @@
-fn find_route(path: &str, routes: &[RouteConfig]) -> Option<&RouteConfig> {
+use crate::config::{AppConfig, ServerConfig, RouteConfig};
+
+pub fn resolve_route<'a>(port: u16, server_name: &str, path: &str, config: &'a AppConfig) -> Option<(&'a ServerConfig, &'a RouteConfig)> {
+    let server = find_server(port, server_name, &config.servers)?;
+    let route = find_route(path, &server.routes).unwrap_or(&server.default_route);
+
+    Some((server, route))
+}
+
+fn find_route<'a>(path: &str, routes: &'a [RouteConfig]) -> Option<&'a RouteConfig> {
 
     // 1. exact match:
     if let Some(route) = routes.iter().find(|route| route.path == path) {
@@ -8,9 +17,23 @@ fn find_route(path: &str, routes: &[RouteConfig]) -> Option<&RouteConfig> {
     // 2. longest prefix match: 
     routes.iter()
         .filter(|route| {
-            path.starts_with(route.path_as_str()) && path.as_bytes().get(route.path.len()) == Some(&b'/')
+            path.starts_with(&route.path) && path.as_bytes().get(route.path.len()) == Some(&b'/')
         })
         .max_by_key(|route| route.path.len())
+}
+
+fn find_server<'a>(port: u16, server_name: &str, servers: &'a [ServerConfig]) -> Option<&'a ServerConfig> {
+
+    // 1. exact match:
+    if let Some (server) = servers.iter().find(|server| {
+        server.ports.contains(&port) && server.server_name == server_name
+    }) {
+        return Some(server);
+    }
+
+    // fallback: find any server listening on the port (for requests without Host header or unmatched server_name)
+    servers.iter().find(|server| server.ports.contains(&port))
+
 }
 
 /* ====================================================================================================================
@@ -23,5 +46,4 @@ NOTES:
     so first case passes the filtering and second one fails
 
 
-    
 */

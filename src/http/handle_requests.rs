@@ -6,14 +6,15 @@ use std::path::Path;
 use bytes::Bytes;
 use futures_util::stream;
 use futures::executor::block_on;
+use crate::config::{RouteConfig, Method};
 
-//Implementation for get - serve static files requests
 impl HttpRequest {
-    pub fn handle_get(&self) -> Vec<u8> {
-        if self.path != "/" {
-            return HttpResponseError::new_err_response(404, "Not Found");
-        }
-        match std::fs::read("./www/index.html") {
+
+    // handle GET request
+    pub fn handle_get(&self, route: &RouteConfig) -> Vec<u8> {
+        let index = route.index_file.as_deref().unwrap_or("index.html");
+        let file_path = format!("{}/{}", route.root, index);
+        match std::fs::read(&file_path) {
             Ok(body) => {
                 let mut headers = std::collections::HashMap::new();
                 headers.insert("Content-Type".to_string(), "text/html".to_string());
@@ -22,27 +23,20 @@ impl HttpRequest {
             Err(_) => HttpResponseError::new_err_response(500, "Internal Server Error"),
         }
     }
-}
 
-//Iplementation for post - upload files requests
-impl HttpRequest {
-    pub fn handle_post(&self) -> Vec<u8> {
-        if self.method != "POST" {
-            return HttpResponseError::new_err_response(405, "Method Not Allowed");
-        }
-        if self.path != "/uploads" {
-            return HttpResponseError::new_err_response(404, "Not Found");
-        }
+    // handle POST request
+    pub fn handle_post(&self, route: &RouteConfig) -> Vec<u8> {
         if let Some(content_type) = self.headers.get("Content-Type") {
             if content_type.contains("multipart/form-data") {
-                return self.handle_uploaded_file();
+                return self.handle_uploaded_file(route);
             }
         }
         HttpResponseError::new_err_response(400, "Bad Request")
     }
+
     //handle by using multer crate to parse the multipart/form-data and save the uploaded file to
     // the uploads directory, then return a success response
-    fn handle_uploaded_file(&self) -> Vec<u8> {
+    fn handle_uploaded_file(&self, route: &RouteConfig) -> Vec<u8> {
         // 1. Extract the boundary from the Content-Type header
         let content_type = match self.headers.get("Content-Type") {
             Some(ct) => ct,
@@ -76,7 +70,7 @@ impl HttpRequest {
                             };
                             saved_file_name = safe_name.to_string_lossy().into_owned();
 
-                            let save_path = Path::new("./www/uploads").join(&saved_file_name);
+                            let save_path = Path::new(&route.root).join(&saved_file_name);
 
                             let mut file = match File::create(save_path) {
                                 Ok(f) => f,
@@ -116,12 +110,33 @@ impl HttpRequest {
         }
     }
 
+    // execute the route handler based on the request method and the route configuration, return the response bytes
+    pub fn execute_route(&self, route: &RouteConfig) -> Vec<u8> {
+        // check if method is allowed for this route
+        let allowed = route.methods.iter().any(|m| match m {
+            Method::GET => self.method == "GET",
+            Method::POST => self.method == "POST",
+            Method::DELETE => self.method == "DELETE",
+        });
+        if !allowed {
+            return HttpResponseError::new_err_response(405, "Method Not Allowed");
+        }
+        match self.method.as_str() {
+            "GET" => self.handle_get(route),
+            "POST" => self.handle_post(route),
+            _ => HttpResponseError::new_err_response(405, "Method Not Allowed"),
+        }
+    }
+
 }
 
+/* ====================================================================================================================
+NOTES:
 
-//Implementation for delete - delete files requests
-impl HttpRequest {
-// //TODO
-// fn handle_delete(&self) -> Vec<u8> {
-// }
-}
+- in handle_get():
+    first line: ckeck if the route has an index file specified, if not default to "index.html"
+    second line: construct the full file path by combining the route's root directory with the index file name
+    third line: attempt to read the file from disk, if successful create a 200 OK response with the file contents as the body
+                if reading fails (e.g. file not found), return a 500 Internal Server Error response
+
+*/

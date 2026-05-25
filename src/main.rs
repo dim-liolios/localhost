@@ -2,6 +2,11 @@ mod server;
 mod event_loop;
 mod http;
 mod client;
+mod router;
+mod config;
+
+use crate::config::AppConfig;
+
 
 fn main() {
     // start the server
@@ -9,5 +14,6 @@ fn main() {
     let listener2 = server::create_listener("127.0.0.1:8081");
     
     // run the event loop
-    event_loop::run(vec![listener1, listener2]);
+    let config = AppConfig { servers: vec![/* ... */] };
+    event_loop::run(vec![listener1, listener2], &config);
 }

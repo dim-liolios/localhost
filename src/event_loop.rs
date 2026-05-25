@@ -1,18 +1,21 @@
 use std::collections::HashSet;
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener};
 use std::time::{Duration, Instant};
 use std::os::unix::io::AsRawFd;
 use std::io::{Read, Write};
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
 // function, function, function, struct, constant, constant, constant
 use crate::http::request::HttpRequest;
+use crate::http::response::HttpResponseError;
+use crate::router::resolve_route;
 use crate::client::Client;
+use crate::config::AppConfig;
 
 const MAX_EVENTS: usize = 64;
 const TIMEOUT_SECS: u64 = 30;
 const EPOLL_TIMEOUT_MS: i32 = 5000;
 
-pub fn run(listeners: Vec<TcpListener>) {
+pub fn run(listeners: Vec<TcpListener>, config: &AppConfig) {
     let listener_fds: HashSet<i32> = listeners.iter().map(|listener| listener.as_raw_fd()).collect();
 
     // 1. create epoll instance and get its file descriptor
@@ -83,7 +86,11 @@ pub fn run(listeners: Vec<TcpListener>) {
                         if client_add_result < 0 {
                             eprintln!("Failed to add client to epoll");
                         } else {
-                            clients.push(Client::new(client_socket)); // important to keep the connection alive
+                            let port = listeners.iter()                 // find the listener that accepted this client to
+                            .find(|l| l.as_raw_fd() == fd).unwrap()     // get its port number for the Client struct
+                            .local_addr().unwrap()
+                            .port();
+                            clients.push(Client::new(client_socket, port)); // important to keep the connection alive
                         }
                     }
                     Err(e) => eprintln!("accept() failed: {}", e),
@@ -111,15 +118,25 @@ pub fn run(listeners: Vec<TcpListener>) {
                             // extend_from_slice() appends the bytes read from the client to the client's buffer
 
                             while let Some(end) = check_request_end(&client.buffer) {
-                                let response = HttpRequest::parse_request(&client.buffer[..end]);
+                                let response = match HttpRequest::parse_request(&client.buffer[..end]) {
+                                    Err(err_response) => err_response, // => bytes for 400/413... response if request parsing fails
+                                    Ok(request) => { // => parsing successful, next step: route handling
+                                        let host = request.headers.get("Host").map(|h| h.as_str()).unwrap_or("");
+                                        match resolve_route(client.port, host, &request.path, config) {
+                                            None => HttpResponseError::new_err_response(400, "Bad Request"), // => no matching route found -> bytes 400 response
+                                            Some((_server, route)) => request.execute_route(route), // => route found, execute it and get
+                                            // the response in bytes (the response is a HttpResponseOk or HttpResponseError struct)
+                                        }
+                                    }
+                                };
+                                // 6. send the RESPONSE back to the client and remove the processed request from the client's buffer
                                 if let Err(e) = client.socket.write_all(&response) {
                                     eprintln!("Failed to send response to client: {}", e);
                                     break;
+                                    // with write_all() we send the RESPONSE (in bytes) to the client
                                 }
-                                let request = String::from_utf8_lossy(&client.buffer[..end]).to_string();
                                 client.buffer.drain(..end);
                                 println!("Request from client fd {}", fd);
-                                // println!("Request:\n{}", request);
                             }
                         }
                         Err(e) => eprintln!("read() failed: {}", e),
@@ -128,7 +145,7 @@ pub fn run(listeners: Vec<TcpListener>) {
             }
         }
 
-        // 6. check for timed-out clients
+        // 7. check for timed-out clients
         let timeout = Duration::from_secs(TIMEOUT_SECS);
         let timed_out_fds: Vec<i32> = clients.iter()
             .filter(|c| c.last_activity.elapsed() > timeout)
