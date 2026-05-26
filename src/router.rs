@@ -23,10 +23,11 @@ fn find_route<'a>(path: &str, routes: &'a [RouteConfig]) -> Option<&'a RouteConf
 }
 
 fn find_server<'a>(port: u16, server_name: &str, servers: &'a [ServerConfig]) -> Option<&'a ServerConfig> {
+    let normalized_server_name = normalize_host(server_name);
 
     // 1. exact match:
     if let Some (server) = servers.iter().find(|server| {
-        server.ports.contains(&port) && server.server_name == server_name
+        server.ports.contains(&port) && server.server_name == normalized_server_name
     }) {
         return Some(server);
     }
@@ -34,6 +35,20 @@ fn find_server<'a>(port: u16, server_name: &str, servers: &'a [ServerConfig]) ->
     // fallback: find any server listening on the port (for requests without Host header or unmatched server_name)
     servers.iter().find(|server| server.ports.contains(&port))
 
+}
+
+// ====================================================================================================================
+// HELPER FUNCTIONS:
+
+fn normalize_host(host: &str) -> String {
+    host
+        .trim()
+        .to_lowercase()
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_string()
 }
 
 /* ====================================================================================================================
@@ -45,5 +60,9 @@ NOTES:
         if it's anything else -> invalid match (/apix)
     so first case passes the filtering and second one fails
 
+- normalize_host():
+    "localhost:8080" → "localhost"
+    "Example.COM:8080." → "example.com"
+    This ensures Host header matching works even with port numbers and case variations
 
 */

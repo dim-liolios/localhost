@@ -4,9 +4,9 @@ mod http;
 mod client;
 mod router;
 mod config;
+mod config_parser;
 
 use crate::config::AppConfig;
-
 
 fn main() {
     // start the server
