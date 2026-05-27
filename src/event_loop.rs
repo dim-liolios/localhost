@@ -123,7 +123,7 @@ pub fn run(listeners: Vec<TcpListener>, config: &AppConfig) {
                                     Ok(request) => { // => parsing successful, next step: route handling
                                         let host = request.headers.get("Host").map(|h| h.as_str()).unwrap_or("");
                                         match resolve_route(client.port, host, &request.path, config) {
-                                            None => HttpResponseError::new_err_response(400, "Bad Request"), // => no matching route found -> bytes 400 response
+                                            None => HttpResponseError::new_err_response(404, "Not Found"), // => no matching route found -> bytes 404 response
                                             Some((_server, route)) => request.execute_route(route), // => route found, execute it and get
                                             // the response in bytes (the response is a HttpResponseOk or HttpResponseError struct)
                                         }

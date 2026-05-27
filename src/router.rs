@@ -2,7 +2,7 @@ use crate::config::{AppConfig, ServerConfig, RouteConfig};
 
 pub fn resolve_route<'a>(port: u16, server_name: &str, path: &str, config: &'a AppConfig) -> Option<(&'a ServerConfig, &'a RouteConfig)> {
     let server = find_server(port, server_name, &config.servers)?;
-    let route = find_route(path, &server.routes).unwrap_or(&server.default_route);
+    let route = find_route(path, &server.routes)?;
 
     Some((server, route))
 }
