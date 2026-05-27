@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uploads</title>
+</head>
+<body>
+    <h1>Uploads List</h1>
+    <!-- list of uploaded files will go here  -->
+    <ul id="uploadsList"></ul>
+    <script>
+        // Fetch the list of uploaded files from the server
+        async function fetchUploads() {
+            try {
+                const response = await fetch('http://localhost:8080/uploads/list');
+                if (response.ok) {
+                    const uploads = await response.json();
+                    const uploadsList = document.getElementById('uploadsList');
+                    uploadsList.innerHTML = ''; // Clear existing list
+                    uploads.forEach(upload => {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = upload.filename; // Assuming upload has a filename property
+                        uploadsList.appendChild(listItem);
+                    });
+                } else {
+                    console.error('Failed to fetch uploads:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error fetching uploads:', error);
+            }
+        }
+
+        // Fetch uploads when the page loads
+        window.onload = fetchUploads;
+    </script>
+</body>
+</html>

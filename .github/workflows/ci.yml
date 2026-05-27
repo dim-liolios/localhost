@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - development
+      - psi
+      - Christos
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # pre-built GitHub Action that "git clone" the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # run this in terminal: "cargo build --workspace" (builds all the Rust packages in the workspace)
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Start server
+        run: cargo run &
+
+      - name: Wait for server to be ready
+        run: |
+          for i in $(seq 1 10); do
+            curl -s http://localhost:8080/ && break
+            sleep 1
+          done
+
+      # run this in terminal: "cargo test --workspace" (runs all the tests in the workspace)
+      - name: Run tests
+        run: cargo test --workspace
