@@ -26,6 +26,7 @@ pub struct RouteConfig {
     pub directory_listing: bool,           
     pub redirect: Option<(u16, String)>,     // redirect: (status code, target URL)
     pub cgi_extension: Option<String>,
+    pub cookie_required: bool,
 }
 
 // ====================================================================================================================

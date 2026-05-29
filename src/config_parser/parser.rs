@@ -1,6 +1,19 @@
 use crate::config::{AppConfig, ServerConfig, RouteConfig, Method};
+use crate::config_parser::{tokenize, ParseError};
 use std::collections::HashMap;
 use std::net::IpAddr;
+
+pub fn parse_config_file(path: &str) -> Result<AppConfig, ParseError> {
+    let input = std::fs::read_to_string(path)
+        .map_err(|e| ParseError::new(0, format!("Failed to read config file: {}", e)))?;
+        // read server.conf file and return error (in ParseError format) if it fails. if Ok return it as a string in "input"
+
+    let tokens = tokenize(&input)?;
+    let mut parser = ConfigParser::new(tokens);
+    let servers = parser.parse_servers()?;
+
+    Ok(AppConfig { servers })
+}
 
 // ====================================================================================================================
 // PARSER
@@ -176,6 +189,15 @@ impl ConfigParser {
         })
     }
 
+    //     pub struct ServerConfig {
+    //     pub host: IpAddr,
+    //     pub ports: Vec<u16>,
+    //     pub server_name: String,
+    //     pub error_pages: HashMap<u16, String>,
+    //     pub client_max_body_size: usize,
+    //     pub routes: Vec<RouteConfig>,
+    //     }
+
     fn parse_route(&mut self) -> Result<RouteConfig, ParseError> {
         let path = self.next_word()?;
         self.expect_open_brace()?;
@@ -267,13 +289,3 @@ impl ConfigParser {
 // ====================================================================================================================
 // PUBLIC API
 
-pub fn parse_config_file(path: &str) -> Result<AppConfig, ParseError> {
-    let input = std::fs::read_to_string(path)
-        .map_err(|e| ParseError::new(0, format!("Failed to read config file: {}", e)))?;
-
-    let tokens = tokenize(&input)?;
-    let mut parser = ConfigParser::new(tokens);
-    let servers = parser.parse_servers()?;
-
-    Ok(AppConfig { servers })
-}
