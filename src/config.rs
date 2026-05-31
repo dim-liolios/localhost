@@ -14,7 +14,6 @@ pub struct ServerConfig {
     pub error_pages: HashMap<u16, String>,   // 404: "./errors/404.html"
     pub client_max_body_size: usize,
     pub routes: Vec<RouteConfig>,
-    pub default_route: RouteConfig,          // if no route matches, use this (else 404)
 }
 
 // ====================================================================================================================
@@ -27,6 +26,7 @@ pub struct RouteConfig {
     pub directory_listing: bool,           
     pub redirect: Option<(u16, String)>,     // redirect: (status code, target URL)
     pub cgi_extension: Option<String>,
+    pub cookie_required: bool,
 }
 
 // ====================================================================================================================

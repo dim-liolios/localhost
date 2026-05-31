@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use libc::{epoll_create1, epoll_ctl, epoll_wait, epoll_event, EPOLLIN, EPOLL_CTL_ADD, EPOLL_CTL_DEL};
 // function, function, function, struct, constant, constant, constant
 use crate::http::request::HttpRequest;
+use crate::http::handle_requests::RouteAction;
 use crate::http::response::HttpResponseError;
 use crate::router::resolve_route;
 use crate::client::Client;
@@ -100,6 +101,10 @@ pub fn run(listeners: Vec<TcpListener>, config: &AppConfig) {
                 if let Some(client) = clients.iter_mut().find(|c| c.socket.as_raw_fd() == fd) {
                 // find() returns Option (Some(value) -> TcpStream or None)
 
+                    if client.cgi_waiting {
+                        continue;
+                    }
+
                     let mut buffer = [0u8; 4096]; // array with 4096 8-bit integers -> bytes (0s here) to hold the data read from the client
                 
                     match client.socket.read(&mut buffer) {
@@ -118,22 +123,26 @@ pub fn run(listeners: Vec<TcpListener>, config: &AppConfig) {
                             // extend_from_slice() appends the bytes read from the client to the client's buffer
 
                             while let Some(end) = check_request_end(&client.buffer) {
-                                let response = match HttpRequest::parse_request(&client.buffer[..end]) {
+                                let action = match HttpRequest::parse_request(&client.buffer[..end]) {
                                     Err(err_response) => err_response, // => bytes for 400/413... response if request parsing fails
                                     Ok(request) => { // => parsing successful, next step: route handling
                                         let host = request.headers.get("Host").map(|h| h.as_str()).unwrap_or("");
                                         match resolve_route(client.port, host, &request.path, config) {
                                             None => HttpResponseError::new_err_response(400, "Bad Request"), // => no matching route found -> bytes 400 response
-                                            Some((_server, route)) => request.execute_route(route), // => route found, execute it and get
-                                            // the response in bytes (the response is a HttpResponseOk or HttpResponseError struct)
+                                            Some((_server, route)) => match request.execute_route(route, client) {
+                                                RouteAction::Immediate(response) => response,
+                                                RouteAction::Deferred => Vec::new(),
+                                            },
                                         }
                                     }
                                 };
                                 // 6. send the RESPONSE back to the client and remove the processed request from the client's buffer
-                                if let Err(e) = client.socket.write_all(&response) {
-                                    eprintln!("Failed to send response to client: {}", e);
-                                    break;
-                                    // with write_all() we send the RESPONSE (in bytes) to the client
+                                if !action.is_empty() {
+                                    if let Err(e) = client.socket.write_all(&action) {
+                                        eprintln!("Failed to send response to client: {}", e);
+                                        break;
+                                        // with write_all() we send the RESPONSE (in bytes) to the client
+                                    }
                                 }
                                 client.buffer.drain(..end);
                                 println!("Request from client fd {}", fd);
@@ -145,7 +154,53 @@ pub fn run(listeners: Vec<TcpListener>, config: &AppConfig) {
             }
         }
 
-        // 7. check for timed-out clients
+        // 7. check non-blocking CGI completion
+        for client in clients.iter_mut() {
+            if !client.cgi_waiting {
+                continue;
+            }
+
+            let pid = match client.cgi_pid {
+                Some(pid) => pid,
+                None => {
+                    client.cgi_waiting = false;
+                    continue;
+                }
+            };
+
+            let mut status = 0;
+            let result = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+
+            if result == 0 {
+                continue;
+            }
+
+            let response = if result < 0 {
+                HttpResponseError::new_err_response(500, "CGI waitpid failed")
+            } else if unsafe { libc::WIFEXITED(status) } && unsafe { libc::WEXITSTATUS(status) } == 0 {
+                match client.cgi_output_path.as_ref() {
+                    Some(path) => match std::fs::read(path) {
+                        Ok(cgi_output) => {
+                            build_http_response_from_cgi_output(&cgi_output)
+                        }
+                        Err(_) => HttpResponseError::new_err_response(500, "Failed to read CGI output"),
+                    },
+                    None => HttpResponseError::new_err_response(500, "Missing CGI output path"),
+                }
+            } else {
+                HttpResponseError::new_err_response(500, "CGI process failed")
+            };
+
+            let _ = client.socket.write_all(&response);
+            if let Some(path) = client.cgi_output_path.take() {
+                let _ = std::fs::remove_file(path);
+            }
+            client.cgi_pid = None;
+            client.cgi_waiting = false;
+            client.last_activity = Instant::now();
+        }
+
+        // 8. check for timed-out clients
         let timeout = Duration::from_secs(TIMEOUT_SECS);
         let timed_out_fds: Vec<i32> = clients.iter()
             .filter(|c| c.last_activity.elapsed() > timeout)
@@ -197,6 +252,68 @@ fn check_request_end(buffer: &[u8]) -> Option<usize> {
     }
 
     Some(headers_end)
+}
+
+fn build_http_response_from_cgi_output(output: &[u8]) -> Vec<u8> {
+    if output.starts_with(b"HTTP/1.") {
+        return output.to_vec();
+    }
+
+    let (headers_raw, body) = if let Some(pos) = output.windows(4).position(|w| w == b"\r\n\r\n") {
+        (&output[..pos], &output[pos + 4..])
+    } else if let Some(pos) = output.windows(2).position(|w| w == b"\n\n") {
+        (&output[..pos], &output[pos + 2..])
+    } else {
+        (&[][..], output)
+    };
+
+    let headers_text = String::from_utf8_lossy(headers_raw);
+    let mut status_code = 200u16;
+    let mut out_headers: Vec<(String, String)> = Vec::new();
+
+    for raw_line in headers_text.lines() {
+        let line = raw_line.trim_end_matches('\r');
+        if let Some((key, value)) = line.split_once(':') {
+            let key_trimmed = key.trim().to_string();
+            let value_trimmed = value.trim().to_string();
+
+            if key_trimmed.eq_ignore_ascii_case("Status") {
+                if let Some(code_str) = value_trimmed.split_whitespace().next() {
+                    if let Ok(code) = code_str.parse::<u16>() {
+                        status_code = code;
+                    }
+                }
+            } else if !key_trimmed.eq_ignore_ascii_case("Content-Length") {
+                out_headers.push((key_trimmed, value_trimmed));
+            }
+        }
+    }
+
+    let reason = match status_code {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        413 => "Payload Too Large",
+        500 => "Internal Server Error",
+        503 => "Service Unavailable",
+        _ => "OK",
+    };
+
+    let mut response = format!("HTTP/1.1 {} {}\r\n", status_code, reason);
+    for (k, v) in out_headers {
+        response.push_str(&format!("{}: {}\r\n", k, v));
+    }
+    response.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+
+    let mut bytes = response.into_bytes();
+    bytes.extend_from_slice(body);
+    bytes
 }
 
 fn extract_content_length(headers: &str) -> Option<usize> {

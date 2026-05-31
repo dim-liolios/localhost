@@ -1,7 +1,11 @@
 /target
+.github
+test/
+src/config_parser/
 
-src/http/register_routes.rs
-src/http/testing.rs
+
+
+
 
 //ignore routes
 routes/uploads
