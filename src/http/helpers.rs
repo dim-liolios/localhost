@@ -24,13 +24,13 @@ impl HttpRequest {
         // 1. Extract the boundary from the Content-Type header
         let content_type = match self.headers.get("Content-Type") {
             Some(ct) => ct,
-            None => return HttpResponseError::new_err_response(400, "Bad Request"),
+            None => return HttpResponseError::new_err_response(400, "Bad Request 2"),
         };
 
         // Parse out the boundary token string
         let boundary = match content_type.split("boundary=").nth(1) {
             Some(b) => b.trim().to_string(),
-            None => return HttpResponseError::new_err_response(400, "Bad Request"),
+            None => return HttpResponseError::new_err_response(400, "Bad Request 3"),
         };
 
         // 2. Convert your raw bytes vector into a one-shot async stream for Multer
@@ -95,19 +95,24 @@ impl HttpRequest {
     }
 
 
-    pub fn list_directory(&self) -> Vec<u8> {
+    pub fn list_directory(&self, route: &RouteConfig) -> Vec<u8> {
         let mut entries = Vec::new();
-        if let Ok(dir_entries) = std::fs::read_dir(self.path.clone()) {
+        if let Ok(dir_entries) = std::fs::read_dir(route.root.clone()) {
             for entry in dir_entries.flatten() {
                 if let Ok(file_name) = entry.file_name().into_string() {
                     entries.push(file_name);
+                }else{
+                    entries.push("Invalid UTF-8 filename".to_string());
                 }
             }
+        }else{
+            return HttpResponseError::new_err_response(404, "Directory Not Found");
         }
+        println!("Directory listing: {:?}", entries);
         HttpResponseOk {
             status_code: 200,
-            headers: std::collections::HashMap::from([("Content-Type".to_string(), "text/plain".to_string())]),
-            body: entries.join("\n").into_bytes(),
+            headers: std::collections::HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
+            body: serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string()).into_bytes(),
         }.response_ok_to_bytes()
     }
 

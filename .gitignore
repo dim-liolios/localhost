@@ -1,17 +1,7 @@
 /target
 .github
-test/
+tests/
 src/config_parser/
-
-
-
-
-
-//ignore routes
-routes/uploads
-routes/www/error.html
-routes/www/uploads.html
-router.conf
 
 notes.md
 test_upload.txt

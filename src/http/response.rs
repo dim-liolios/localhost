@@ -14,11 +14,18 @@ impl HttpResponseError {
     //This will be served by html file for the error page later
     pub fn new_err_response(status_code: u16, body: &str) -> Vec<u8> {
 
+        let extra_html = if status_code == 403 {
+            "<p><a href=\"/cgi/set_cookie.py\"><button type=\"button\">Get Cookie</button></a></p>"
+        } else {
+            ""
+        };
+
         let html_body = ERROR_TEMPLATE
         .get()
         .unwrap()
         .replace("{{status_code}}", &status_code.to_string())
-        .replace("{{status_text}}", body);
+        .replace("{{status_text}}", body)
+        .replace("{{extra_html}}", extra_html);
     
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",

@@ -38,21 +38,14 @@ impl HttpRequest {
     // handle GET request
     pub fn handle_get(&self, route: &RouteConfig, client: &mut Client) -> RouteAction {
         if route.cookie_required && !self.cookies {
-            let body = b"<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 Forbidden</h1><p>You need a cookie to access /admin.</p><p><a href=\"/cgi/set_cookie.py\">Get Cookie</a></p><p><a href=\"/admin\">Retry /admin</a></p></body></html>";
-            let response = format!(
-                "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
-                body.len()
-            );
-            let mut bytes = response.into_bytes();
-            bytes.extend_from_slice(body);
-            return RouteAction::Immediate(bytes);
+            return RouteAction::Immediate(HttpResponseError::new_err_response(403, "Forbidden"));
         }
 
         if self.path.ends_with(".py") {
             return self.handle_cgi(&self.path, route, client);
         }
         if route.directory_listing == true {
-            return RouteAction::Immediate(self.list_directory());
+            return RouteAction::Immediate(self.list_directory(route));
         } else {
             let file_path = route.root.clone() + "/" + route.index_file.as_deref().unwrap().trim_start_matches('/');
             match std::fs::read(file_path) {
@@ -92,7 +85,7 @@ impl HttpRequest {
         if file_name.is_empty() {
             return HttpResponseError::new_err_response(400, "Bad Request");
         }
-        let file_path = Path::new("./www/uploads").join(file_name);
+        let file_path = Path::new("./www/uploads/").join(file_name);
         if !file_path.exists() {
             return HttpResponseError::new_err_response(404, "File Not Found");
         }else{
@@ -129,6 +122,7 @@ impl HttpRequest {
         match self.method.as_str() {
             "GET" => self.handle_get(route, client),
             "POST" => RouteAction::Immediate(self.handle_post(route)),
+            "DELETE" => RouteAction::Immediate(self.handle_delete()),
             _ => RouteAction::Immediate(HttpResponseError::new_err_response(405, "Method Not Allowed")),
         }
     }
