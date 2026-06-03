@@ -1,19 +1,18 @@
-mod server;
-mod event_loop;
-mod http;
-mod client;
-mod router;
-mod config;
-mod config_parser;
+use localhost::server;
+use localhost::event_loop;
+use localhost::http;
+use localhost::client;
+use localhost::router;
+use localhost::config;
+use localhost::config_parser::parse_config_file;
 use std::collections::HashSet;
-use crate::config_parser::parse_config_file;
-use crate::config::AppConfig;
 
 fn main() {
     match parse_config_file("config/server.conf") {
         // parse_config_file returns an AppConfig struct
 
         Ok(config) => {
+            // println!("{:#?}", config);
             let mut listeners = Vec::new();
             let mut unique_ports = HashSet::new();
             // we use hashnet bc we need only one listener for each port even if two servers use it

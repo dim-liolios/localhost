@@ -39,6 +39,7 @@ fn test_epoll_ctl_add_and_del() {
     unsafe { libc::close(epoll_fd) };
 }
 
+
 // #[test]
 // // #[ignore = "requires server running on localhost:8080"]
 // fn curl_get_request() {

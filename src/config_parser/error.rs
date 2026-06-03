@@ -9,7 +9,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    fn new(line: usize, message: impl Into<String>) -> Self {
+    pub fn new(line: usize, message: impl Into<String>) -> Self {
         ParseError {
             line,
             message: message.into(),

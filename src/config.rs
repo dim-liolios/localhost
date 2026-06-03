@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 
+#[derive(Debug)]
 pub struct AppConfig {
     pub servers: Vec<ServerConfig>,        // one or more server blocks
 }
 
 // ====================================================================================================================
 
+#[derive(Debug)]
 pub struct ServerConfig {
     pub host: IpAddr,                        // IP to listen on: "127.0.0.1"
     pub ports: Vec<u16>,
@@ -18,6 +20,7 @@ pub struct ServerConfig {
 
 // ====================================================================================================================
 
+#[derive(Debug)]
 pub struct RouteConfig {
     pub path: String,
     pub methods: Vec<Method>,
@@ -31,6 +34,7 @@ pub struct RouteConfig {
 
 // ====================================================================================================================
 
+#[derive(Debug)]
 pub enum Method {
     GET,
     POST,
