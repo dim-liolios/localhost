@@ -16,9 +16,6 @@ impl HttpRequest {
     
     pub fn parse_request(buffer: &[u8]) -> Result<HttpRequest, Vec<u8>> {
 
-        //split the buffer to
-        //1.request line + headers
-        //2.body
         let header_end_index = match buffer.windows(4).position(|window| window == b"\r\n\r\n") {
             Some(i) => i,
             None => return Err(HttpResponseError::new_err_response(400, "Bad Request")),
@@ -63,15 +60,6 @@ impl HttpRequest {
             }
         }
 
-        // reject oversized bodies before constructing the request
-        if let Some(content_length) = headers.get("Content-Length") {
-            if let Ok(length) = content_length.parse::<usize>() {
-                if length > 10 * 1024 * 1024 {
-                    return Err(HttpResponseError::new_err_response(413, "Payload Too Large"));
-                }
-            }
-        }
-
         let request = HttpRequest {
             method,
             path,
@@ -85,8 +73,6 @@ impl HttpRequest {
     }
 
 
-    //return the response directly from the is_valid function, if the request is valid then 
-    //we call handle_request to get the response, otherwise we return the error response directly
     fn is_valid(self) -> Result<HttpRequest, Vec<u8>> {
         //check method
         let valid_methods = ["GET", "POST", "DELETE"];
@@ -103,14 +89,6 @@ impl HttpRequest {
         if self.version != "HTTP/1.1" && self.version != "HTTP/1.0" {
             return Err(HttpResponseError::new_err_response(400, "Bad Request"));
         }
-
-        //check cookies for authentication - reminder to check requirements
-        //Cookie check disabled for now
-        // if self.headers.get("Cookie").is_none() {
-        //     return Err(HttpResponseError::new_err_response(401, "Unauthorized"));
-        // }
-
-        //maybe add more checks here
 
         Ok(self)
     }

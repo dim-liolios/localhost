@@ -9,8 +9,8 @@ pub enum Token {
     CloseBrace,
 }
 
-pub fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
-    let mut tokens = Vec::<Token>::new();
+pub fn tokenize(input: &str) -> Result<Vec<(Token, usize)>, ParseError> {
+    let mut tokens = Vec::<(Token, usize)>::new();
     let mut current_word = String::new();
     let mut line = 1;
 
@@ -18,30 +18,32 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
         match character {
             '{' => {
                 if !current_word.is_empty() {
-                    tokens.push(Token::Word(current_word.clone()));
+                    tokens.push((Token::Word(current_word.clone()), line));
                     current_word.clear();
                 }
-                tokens.push(Token::OpenBrace);
+                tokens.push((Token::OpenBrace, line));
             }
             '}' => {
                 if !current_word.is_empty() {
-                    tokens.push(Token::Word(current_word.clone()));
+                    tokens.push((Token::Word(current_word.clone()), line));
                     current_word.clear();
                 }
-                tokens.push(Token::CloseBrace);
+                tokens.push((Token::CloseBrace, line));
             }
             ' ' | '\t' => { // whitespace: end of a word
                 if !current_word.is_empty() {
-                    tokens.push(Token::Word(current_word.clone()));
+                    tokens.push((Token::Word(current_word.clone()), line));
                     current_word.clear();
                 }
             }
-            '\n' => {
+            '\n' | '\r'=> {
                 if !current_word.is_empty() {
-                    tokens.push(Token::Word(current_word.clone()));
+                    tokens.push((Token::Word(current_word.clone()), line));
                     current_word.clear();
                 }
-                line += 1;
+                if character == '\n' {
+                    line += 1;
+                }
             }
             _ => {
                 current_word.push(character);
@@ -50,7 +52,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
     }
 
     if !current_word.is_empty() {
-        tokens.push(Token::Word(current_word));
+        tokens.push((Token::Word(current_word), line));
     }
 
     Ok(tokens)

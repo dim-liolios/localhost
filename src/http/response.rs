@@ -1,5 +1,5 @@
-use crate::ERROR_TEMPLATE;
 use std::collections::HashMap;
+use crate::ERROR_TEMPLATE;
 
 pub struct HttpResponseOk {
     pub status_code: u16,
@@ -11,21 +11,46 @@ pub struct HttpResponseError {
 }
 
 impl HttpResponseError {
-    //This will be served by html file for the error page later
-    pub fn new_err_response(status_code: u16, body: &str) -> Vec<u8> {
-
+    fn render_error_html(status_code: u16, body: &str, custom_error_page: Option<&String>) -> String {
         let extra_html = if status_code == 403 {
             "<p><a href=\"/cgi/set_cookie.py\"><button type=\"button\">Get Cookie</button></a></p>"
         } else {
             ""
         };
 
-        let html_body = ERROR_TEMPLATE
-        .get()
-        .unwrap()
-        .replace("{{status_code}}", &status_code.to_string())
-        .replace("{{status_text}}", body)
-        .replace("{{extra_html}}", extra_html);
+        if let Some(path) = custom_error_page {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                return content
+                    .replace("{{status_code}}", &status_code.to_string())
+                    .replace("{{status_text}}", body)
+                    .replace("{{extra_html}}", extra_html);
+            }
+        }
+
+        ERROR_TEMPLATE
+            .get()
+            .unwrap()
+            .replace("{{status_code}}", &status_code.to_string())
+            .replace("{{status_text}}", body)
+            .replace("{{extra_html}}", extra_html)
+    }
+
+    pub fn new_err_response_with_pages(status_code: u16, body: &str, error_pages: &HashMap<u16, String>) -> Vec<u8> {
+        let html_body = Self::render_error_html(status_code, body, error_pages.get(&status_code));
+
+        let response = format!(
+            "HTTP/1.1 {} {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+            status_code,
+            body,
+            html_body.len(),
+            html_body
+        );
+        response.into_bytes()
+    }
+
+    //This will be served by html file for the error page later
+    pub fn new_err_response(status_code: u16, body: &str) -> Vec<u8> {
+        let html_body = Self::render_error_html(status_code, body, None);
     
         let response = format!(
             "HTTP/1.1 {} {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
